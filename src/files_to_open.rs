@@ -1,17 +1,21 @@
 use eframe::{
-    egui::{Button, CentralPanel, Context, Label, Ui},
+    egui::{Button, CentralPanel, Context, Label, Layout, ScrollArea, TopBottomPanel, Ui},
     App,
 };
 use rfd::FileDialog;
-use std::path::PathBuf;
+use std::{path::PathBuf, usize};
 
 pub struct FilesToOpen {
     files: Vec<PathBuf>,
+    save_dir: Option<PathBuf>,
 }
 
 impl FilesToOpen {
     pub fn new() -> FilesToOpen {
-        FilesToOpen { files: vec![] }
+        FilesToOpen {
+            files: vec![],
+            save_dir: None,
+        }
     }
 
     // TODO See if need to be removed
@@ -29,6 +33,10 @@ impl FilesToOpen {
         }
     }
 
+    fn remove_file_from_vec(&mut self, index: usize) {
+        self.files.remove(index);
+    }
+
     // TODO See if need to be removed
     // pub fn _display(&self) {
     //     for val in self.files.iter() {
@@ -36,10 +44,24 @@ impl FilesToOpen {
     //     }
     // }
 
-    pub fn render_files(&self, ui: &mut Ui) {
-        for file in &self.files {
-            ui.add(Label::new(file.to_str().unwrap()));
+    pub fn render_files(&mut self, ui: &mut Ui) {
+        // TODO this looks bad
+        let mut remove_index: Vec<usize> = vec![];
+        for (index, file) in self.files.iter().enumerate() {
+            ui.horizontal(|ui| {
+                ui.with_layout(Layout::left_to_right(), |ui| {
+                    ui.add(Label::new(file.file_name().unwrap().to_str().unwrap()))
+                });
+                ui.with_layout(Layout::right_to_left(), |ui| {
+                    if ui.add(Button::new("Remove")).clicked() {
+                        remove_index.push(index);
+                    }
+                });
+            });
             ui.add_space(5.0);
+        }
+        for index in remove_index {
+            self.remove_file_from_vec(index);
         }
     }
 
@@ -60,15 +82,40 @@ impl FilesToOpen {
 
 impl App for FilesToOpen {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
-        CentralPanel::default().show(ctx, |ui| {
-            ui.heading("PDF Merger");
+        self.ui_file_drag_drop(ctx);
+        TopBottomPanel::top("top_panel").show(ctx, |ui| {
+            // TODO Extract into function
             ui.add_space(10.0);
+            ui.heading("PDF Merger");
+            ui.add_space(5.0);
             if ui.add(Button::new("Add Files")).clicked() {
                 self.open_file();
             }
+            ui.add_space(5.0);
+        });
+        CentralPanel::default().show(ctx, |ui| {
             ui.add_space(10.0);
-            self.render_files(ui);
-            self.ui_file_drag_drop(ctx);
+            ScrollArea::vertical()
+                .auto_shrink([false; 2])
+                .show(ui, |ui| {
+                    self.render_files(ui);
+                });
+            ui.add_space(10.0);
+        });
+        TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
+            // TODO Extract into function
+            ui.add_space(5.0);
+            ui.horizontal(|ui| {
+                if ui.add(Button::new("Configure Save Path")).clicked() {
+                    if let Some(save_dir) = FileDialog::new().set_directory("/").pick_folder() {
+                        self.save_dir = Some(save_dir)
+                    }
+                }
+                if let Some(save_dir) = self.save_dir.clone() {
+                    ui.add(Label::new(save_dir.to_str().unwrap()));
+                }
+            });
+            ui.add_space(5.0);
         });
     }
 }
