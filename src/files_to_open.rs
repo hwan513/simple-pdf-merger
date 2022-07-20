@@ -1,5 +1,5 @@
 use eframe::{
-    egui::{Button, CentralPanel, Label, Ui},
+    egui::{Button, CentralPanel, Context, Label, Ui},
     App,
 };
 use rfd::FileDialog;
@@ -30,11 +30,11 @@ impl FilesToOpen {
     }
 
     // TODO See if need to be removed
-    pub fn _display(&self) {
-        for val in self.files.iter() {
-            println!("{:?}", val);
-        }
-    }
+    // pub fn _display(&self) {
+    //     for val in self.files.iter() {
+    //         println!("{:?}", val);
+    //     }
+    // }
 
     pub fn render_files(&self, ui: &mut Ui) {
         for file in &self.files {
@@ -42,10 +42,24 @@ impl FilesToOpen {
             ui.add_space(5.0);
         }
     }
+
+    pub fn ui_file_drag_drop(&mut self, ctx: &Context) {
+        if ctx.input().raw.dropped_files.is_empty() {
+            return;
+        }
+        let dropped_files = &ctx.input().raw.dropped_files.clone();
+        for file in dropped_files {
+            if let Some(path) = file.clone().path {
+                if path.extension().unwrap_or_default() == "pdf" {
+                    self.files.push(path);
+                }
+            }
+        }
+    }
 }
 
 impl App for FilesToOpen {
-    fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         CentralPanel::default().show(ctx, |ui| {
             ui.heading("PDF Merger");
             ui.add_space(10.0);
@@ -54,6 +68,7 @@ impl App for FilesToOpen {
             }
             ui.add_space(10.0);
             self.render_files(ui);
+            self.ui_file_drag_drop(ctx);
         });
     }
 }
