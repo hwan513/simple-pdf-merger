@@ -1,4 +1,5 @@
 mod files_to_open;
+mod merge_files;
 
 use eframe::{run_native, NativeOptions};
 use files_to_open::FilesToOpen;
