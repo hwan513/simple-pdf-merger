@@ -1,13 +1,15 @@
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{collections::BTreeMap, path::PathBuf, thread};
 
 use lopdf::{Bookmark, Document, Object, ObjectId};
 
 pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) {
-    let open_documents: Vec<Document> = file_paths
-        .iter()
-        .map(|file_path| Document::load(file_path).expect("Invalid File Path"))
-        .collect();
-    merge_documents(open_documents, save_path).expect("Operation Failed")
+    thread::spawn(move || {
+        let open_documents: Vec<Document> = file_paths
+            .iter()
+            .map(|file_path| Document::load(file_path).expect("Invalid File Path"))
+            .collect();
+        merge_documents(open_documents, save_path).expect("Operation Failed")
+    });
 }
 
 fn merge_documents(documents: Vec<Document>, save_path: PathBuf) -> std::io::Result<()> {
@@ -17,7 +19,7 @@ fn merge_documents(documents: Vec<Document>, save_path: PathBuf) -> std::io::Res
     // Collect all Documents Objects grouped by a map
     let mut documents_pages = BTreeMap::new();
     let mut documents_objects = BTreeMap::new();
-    let mut document = Document::with_version("1.5");
+    let mut document = Document::with_version("1.7");
 
     for mut doc in documents {
         let mut first = false;
