@@ -1,170 +1,124 @@
-use std::{collections::BTreeMap, path::PathBuf, thread};
+use std::{collections::BTreeMap, path::PathBuf, thread, time::SystemTime};
 
-use lopdf::{Bookmark, Document, Object, ObjectId};
+use lopdf::{Bookmark, Document, Object};
 
 pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) {
     thread::spawn(move || {
+        let sys_time = SystemTime::now();
         let open_documents: Vec<Document> = file_paths
             .iter()
             .map(|file_path| Document::load(file_path).expect("Invalid File Path"))
             .collect();
-        merge_documents(open_documents, save_path).expect("Operation Failed")
+        merge_documents(open_documents, file_paths, save_path);
+        println!("{:?}", sys_time.elapsed());
     });
 }
 
-fn merge_documents(documents: Vec<Document>, save_path: PathBuf) -> std::io::Result<()> {
-    // modified from lopdf example
-    let mut max_id = 1;
-    let mut pagenum = 1;
-    // Collect all Documents Objects grouped by a map
-    let mut documents_pages = BTreeMap::new();
+fn merge_documents(documents: Vec<Document>, doc_names: Vec<PathBuf>, save_path: PathBuf) {
+    let mut page_vec = vec![];
     let mut documents_objects = BTreeMap::new();
     let mut document = Document::with_version("1.7");
-
-    for mut doc in documents {
-        let mut first = false;
+    let mut max_id = 1;
+    for (mut doc, doc_name) in documents.into_iter().zip(doc_names) {
+        let mut first = true;
         doc.renumber_objects_with(max_id);
-
         max_id = doc.max_id + 1;
+        page_vec.extend(doc.get_pages().into_iter().map(|(_, object_id)| {
+            if first {
+                let bookmark = Bookmark::new(
+                    doc_name.file_name().unwrap().to_str().unwrap().to_string(),
+                    [0.0, 0.0, 1.0],
+                    0,
+                    object_id,
+                );
+                document.add_bookmark(bookmark, None);
+                first = false;
+            }
 
-        documents_pages.extend(
-            doc.get_pages()
-                .into_iter()
-                .map(|(_, object_id)| {
-                    if !first {
-                        let bookmark = Bookmark::new(
-                            format!("Page_{}", pagenum),
-                            [0.0, 0.0, 1.0],
-                            0,
-                            object_id,
-                        );
-                        document.add_bookmark(bookmark, None);
-                        first = true;
-                        pagenum += 1;
-                    }
-
-                    (object_id, doc.get_object(object_id).unwrap().to_owned())
-                })
-                .collect::<BTreeMap<ObjectId, Object>>(),
-        );
+            object_id
+        }));
         documents_objects.extend(doc.objects);
     }
 
-    // Catalog and Pages are mandatory
-    let mut catalog_object: Option<(ObjectId, Object)> = None;
-    let mut pages_object: Option<(ObjectId, Object)> = None;
-
-    // Process all objects except "Page" type
-    for (object_id, object) in documents_objects.iter() {
-        // We have to ignore "Page" (as are processed later), "Outlines" and "Outline" objects
-        // All other objects should be collected and inserted into the main Document
+    let mut catalog_id = None;
+    let mut catalog_dict = None;
+    let mut pages_id = None;
+    let mut pages_dict = None;
+    for (object_id, object) in documents_objects {
+        // maybe check to not add duplicates
         match object.type_name().unwrap_or("") {
             "Catalog" => {
-                // Collect a first "Catalog" object and use it for the future "Pages"
-                catalog_object = Some((
-                    if let Some((id, _)) = catalog_object {
-                        id
-                    } else {
-                        *object_id
-                    },
-                    object.clone(),
-                ));
-            }
-            "Pages" => {
-                // Collect and update a first "Pages" object and use it for the future "Catalog"
-                // We have also to merge all dictionaries of the old and the new "Pages" object
-                if let Ok(dictionary) = object.as_dict() {
-                    let mut dictionary = dictionary.clone();
-                    if let Some((_, ref object)) = pages_object {
-                        if let Ok(old_dictionary) = object.as_dict() {
-                            dictionary.extend(old_dictionary);
-                        }
-                    }
-
-                    pages_object = Some((
-                        if let Some((id, _)) = pages_object {
-                            id
-                        } else {
-                            *object_id
-                        },
-                        Object::Dictionary(dictionary),
-                    ));
+                if catalog_id.is_none() {
+                    catalog_id = Some(object_id);
+                    catalog_dict = Some(object.as_dict().unwrap().clone());
                 }
             }
-            "Page" => {}     // Ignored, processed later and separately
-            "Outlines" => {} // Ignored, not supported yet
-            "Outline" => {}  // Ignored, not supported yet
-            _ => {
-                document.objects.insert(*object_id, object.clone());
+            "Pages" => {
+                if pages_id.is_none() {
+                    pages_id = Some(object_id);
+                    pages_dict = Some(object.as_dict().unwrap().clone());
+                } else if let Ok(dictionary) = object.as_dict() {
+                    let mut dictionary = dictionary.clone();
+                    if let Some(old_dictionary) = pages_dict {
+                        dictionary.extend(&old_dictionary);
+                    }
+                    pages_dict = Some(dictionary);
+                }
             }
+            // Modified later
+            "Page" => {}
+            "Outlines" | "Outline" => {}
+            _ => {}
         }
+        document.objects.insert(object_id, object.clone());
     }
 
-    // If no "Pages" found abort
-    if pages_object.is_none() {
-        println!("Pages root not found.");
-
-        return Ok(());
-    }
-
-    // Iter over all "Page" and collect with the parent "Pages" created before
-    for (object_id, object) in documents_pages.iter() {
-        if let Ok(dictionary) = object.as_dict() {
-            let mut dictionary = dictionary.clone();
-            dictionary.set("Parent", pages_object.as_ref().unwrap().0);
-
-            document
-                .objects
-                .insert(*object_id, Object::Dictionary(dictionary));
-        }
-    }
-
-    // If no "Catalog" found abort
-    if catalog_object.is_none() {
-        println!("Catalog root not found.");
-
-        return Ok(());
-    }
-
-    let catalog_object = catalog_object.unwrap();
-    let pages_object = pages_object.unwrap();
-
-    // Build a new "Pages" with updated fields
-    if let Ok(dictionary) = pages_object.1.as_dict() {
-        let mut dictionary = dictionary.clone();
-
-        // Set new pages count
-        dictionary.set("Count", documents_pages.len() as u32);
-
-        // Set new "Kids" list (collected from documents pages) for "Pages"
-        dictionary.set(
-            "Kids",
-            documents_pages
-                .into_iter()
-                .map(|(object_id, _)| Object::Reference(object_id))
-                .collect::<Vec<_>>(),
-        );
-
+    // Modify page objects
+    for page_id in &page_vec {
+        let mut page_dict = document
+            .get_object(*page_id)
+            .unwrap()
+            .as_dict()
+            .unwrap()
+            .clone();
+        page_dict.set("Parent", pages_id.unwrap());
         document
             .objects
-            .insert(pages_object.0, Object::Dictionary(dictionary));
+            .insert(*page_id, Object::Dictionary(page_dict));
     }
 
-    // Build a new "Catalog" with updated fields
-    if let Ok(dictionary) = catalog_object.1.as_dict() {
-        let mut dictionary = dictionary.clone();
-        dictionary.set("Pages", pages_object.0);
-        dictionary.remove(b"Outlines"); // Outlines not supported in merged PDFs
+    // Modify pages object
+    let pages_id = pages_id.unwrap();
+    let mut pages_dict = pages_dict.unwrap();
 
-        document
-            .objects
-            .insert(catalog_object.0, Object::Dictionary(dictionary));
-    }
+    // Set new pages count
+    pages_dict.set("Count", page_vec.len() as u32);
+    // Set new "Kids" list (collected from documents pages) for "Pages"
+    pages_dict.set(
+        "Kids",
+        page_vec
+            .into_iter()
+            .map(Object::Reference)
+            .collect::<Vec<_>>(),
+    );
+    document
+        .objects
+        .insert(pages_id, Object::Dictionary(pages_dict));
 
-    document.trailer.set("Root", catalog_object.0);
+    let catalog_id = catalog_id.unwrap();
+    let mut catalog_dict = catalog_dict.unwrap();
+    // Set new "Kids" list (collected from documents pages) for "Pages"
+    catalog_dict.set("Pages", pages_id);
+    // This will remove all outlines
+    catalog_dict.remove(b"Outlines"); // TODO fix outline merging
+    document
+        .objects
+        .insert(catalog_id, Object::Dictionary(catalog_dict));
 
     // Update the max internal ID as wasn't updated before due to direct objects insertion
     document.max_id = document.objects.len() as u32;
+
+    document.trailer.set("Root", catalog_id);
 
     // Reorder all new Document objects
     document.renumber_objects();
@@ -172,19 +126,16 @@ fn merge_documents(documents: Vec<Document>, save_path: PathBuf) -> std::io::Res
     //Set any Bookmarks to the First child if they are not set to a page
     document.adjust_zero_pages();
 
-    //Set all bookmarks to the PDF Object tree then set the Outlines to the Bookmark content map.
+    // Set all bookmarks to the PDF Object tree then set the Outlines to the Bookmark content map.
+    // Create bookmarks based on file names
     if let Some(n) = document.build_outline() {
-        if let Ok(x) = document.get_object_mut(catalog_object.0) {
-            if let Object::Dictionary(ref mut dict) = x {
-                dict.set("Outlines", Object::Reference(n));
-            }
+        if let Object::Dictionary(ref mut dict) = document.get_object_mut(catalog_id).unwrap() {
+            dict.set("Outlines", Object::Reference(n));
         }
     }
 
+    document.prune_objects();
     document.compress();
-
-    // Save the merged PDF
-    document.save(save_path).unwrap();
-
-    Ok(())
+    document.save(&save_path).unwrap();
+    println!("Completed")
 }
