@@ -1,19 +1,22 @@
-use std::{collections::BTreeMap, path::PathBuf, thread, time::SystemTime};
+use std::{collections::BTreeMap, path::PathBuf, thread};
 
 use lopdf::{Bookmark, Document, Object};
+// use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::*;
 
 pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) {
+    // Create new thead to merge pdf
     thread::spawn(move || {
-        let sys_time = SystemTime::now();
+        // Open all specified documents using rayon thread pools
+        // TODO Make it so removing duplicate pgaes is optional
         let open_documents: Vec<Document> = file_paths
-            .iter()
+            .par_iter()
             .map(|file_path| {
-                println!("{:?} opening files", sys_time.elapsed());
                 remove_duplicate_pages(Document::load(file_path).expect("Invalid File Path"))
             })
             .collect();
+        // Run merge_documents code
         merge_documents(open_documents, file_paths, save_path);
-        println!("{:?}, completion", sys_time.elapsed());
     });
 }
 
@@ -28,6 +31,7 @@ fn remove_duplicate_pages(mut document: Document) -> Document {
         prev_page_text = curr_page_text;
     }
     document.delete_pages(&rem_pages);
+    document.prune_objects();
     document
 }
 
@@ -56,13 +60,11 @@ fn merge_documents(documents: Vec<Document>, doc_names: Vec<PathBuf>, save_path:
         }));
         documents_objects.extend(doc.objects);
     }
-
     let mut catalog_id = None;
     let mut catalog_dict = None;
     let mut pages_id = None;
     let mut pages_dict = None;
     for (object_id, object) in documents_objects {
-        // TODO maybe check to not add duplicates
         match object.type_name().unwrap_or("") {
             "Catalog" => {
                 if catalog_id.is_none() {
@@ -153,5 +155,5 @@ fn merge_documents(documents: Vec<Document>, doc_names: Vec<PathBuf>, save_path:
     document.prune_objects();
     document.compress();
     document.save(&save_path).unwrap();
-    println!("Completed")
+    println!("Completed");
 }
