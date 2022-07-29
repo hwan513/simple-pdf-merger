@@ -7,11 +7,28 @@ pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) {
         let sys_time = SystemTime::now();
         let open_documents: Vec<Document> = file_paths
             .iter()
-            .map(|file_path| Document::load(file_path).expect("Invalid File Path"))
+            .map(|file_path| {
+                println!("{:?} opening files", sys_time.elapsed());
+                remove_duplicate_pages(Document::load(file_path).expect("Invalid File Path"))
+            })
             .collect();
         merge_documents(open_documents, file_paths, save_path);
-        println!("{:?}", sys_time.elapsed());
+        println!("{:?}, completion", sys_time.elapsed());
     });
+}
+
+fn remove_duplicate_pages(mut document: Document) -> Document {
+    let mut rem_pages = vec![];
+    let mut prev_page_text = String::new();
+    for (page_num, _page_id) in document.get_pages() {
+        let curr_page_text = document.extract_text(&[page_num]).unwrap();
+        if prev_page_text == curr_page_text {
+            rem_pages.push(page_num - 1);
+        }
+        prev_page_text = curr_page_text;
+    }
+    document.delete_pages(&rem_pages);
+    document
 }
 
 fn merge_documents(documents: Vec<Document>, doc_names: Vec<PathBuf>, save_path: PathBuf) {
@@ -45,7 +62,7 @@ fn merge_documents(documents: Vec<Document>, doc_names: Vec<PathBuf>, save_path:
     let mut pages_id = None;
     let mut pages_dict = None;
     for (object_id, object) in documents_objects {
-        // maybe check to not add duplicates
+        // TODO maybe check to not add duplicates
         match object.type_name().unwrap_or("") {
             "Catalog" => {
                 if catalog_id.is_none() {
@@ -122,7 +139,6 @@ fn merge_documents(documents: Vec<Document>, doc_names: Vec<PathBuf>, save_path:
 
     // Reorder all new Document objects
     document.renumber_objects();
-
     //Set any Bookmarks to the First child if they are not set to a page
     document.adjust_zero_pages();
 
