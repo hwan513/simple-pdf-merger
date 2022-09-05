@@ -7,11 +7,12 @@ use eframe::{
 };
 use egui_toast::Toasts;
 use rfd::FileDialog;
-use std::{mem, ops::Add, path::PathBuf, time::Duration, usize};
+use std::{mem, ops::Add, path::PathBuf, thread::JoinHandle, time::Duration, usize};
 
 pub struct FilesToOpen {
     files: Vec<PathBuf>,
     save_path: Option<PathBuf>,
+    running_merges: Vec<(String, JoinHandle<()>)>,
 }
 
 impl FilesToOpen {
@@ -19,6 +20,7 @@ impl FilesToOpen {
         FilesToOpen {
             files: vec![],
             save_path: None,
+            running_merges: vec![],
         }
     }
 
@@ -107,31 +109,40 @@ impl App for FilesToOpen {
                                 FileDialog::new().add_filter("pdf", &["pdf"]).save_file();
                         }
                         if self.save_path.is_some() {
+                            let file_name = self.save_path.clone().unwrap();
+                            let file_name = file_name.file_name().unwrap().to_str().unwrap();
                             toasts.info(
                                 format!(
                                     "Merging {} pdf documents. Creating {}",
                                     self.files.len(),
-                                    &self
-                                        .save_path
-                                        .clone()
-                                        .unwrap()
-                                        .file_name()
-                                        .unwrap()
-                                        .to_str()
-                                        .unwrap()
+                                    file_name
                                 ),
                                 Duration::from_secs(10),
                             );
-                            merge_files::start(
-                                mem::take(&mut self.files),
-                                mem::take(&mut self.save_path).unwrap(),
-                            );
+                            self.running_merges.push((
+                                file_name.to_owned(),
+                                merge_files::start(
+                                    mem::take(&mut self.files),
+                                    mem::take(&mut self.save_path).unwrap(),
+                                ),
+                            ))
                         }
                         // if let Some(save_path) = self.save_path.clone() {
                         //     merge_files::start(mem::take(&mut self.files), save_path);
                         // }
                     }
                 });
+
+                for operation in &self.running_merges {
+                    if operation.1.is_finished() {
+                        toasts.info(
+                            format!("{} has finished merging", operation.0),
+                            Duration::from_secs(10),
+                        );
+                    }
+                }
+                self.running_merges
+                    .retain(|operation| !operation.1.is_finished());
                 toasts.show();
             });
             ui.add_space(5.0);

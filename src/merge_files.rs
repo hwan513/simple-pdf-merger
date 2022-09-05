@@ -1,10 +1,14 @@
-use std::{collections::BTreeMap, path::PathBuf, thread};
+use std::{
+    collections::BTreeMap,
+    path::PathBuf,
+    thread::{self, JoinHandle},
+};
 
 use lopdf::{Bookmark, Document, Object};
 // use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rayon::prelude::*;
 
-pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) {
+pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) -> JoinHandle<()> {
     // Create new thead to merge pdf
     thread::spawn(move || {
         // Open all specified documents using rayon thread pools
@@ -17,7 +21,7 @@ pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) {
             .collect();
         // Run merge_documents code
         merge_documents(open_documents, file_paths, save_path);
-    });
+    })
 }
 
 fn remove_duplicate_pages(mut document: Document) -> Document {
@@ -155,5 +159,4 @@ fn merge_documents(documents: Vec<Document>, doc_names: Vec<PathBuf>, save_path:
     document.prune_objects();
     document.compress();
     document.save(&save_path).unwrap();
-    println!("Completed");
 }
