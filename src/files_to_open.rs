@@ -2,10 +2,12 @@ use crate::merge_files;
 use eframe::{
     egui::{self, Button, CentralPanel, Context, Label, Layout, ScrollArea, TopBottomPanel, Ui},
     emath::Align,
+    epaint::Vec2,
     App,
 };
+use egui_toast::Toasts;
 use rfd::FileDialog;
-use std::{mem, path::PathBuf, usize};
+use std::{mem, ops::Add, path::PathBuf, time::Duration, usize};
 
 pub struct FilesToOpen {
     files: Vec<PathBuf>,
@@ -68,9 +70,22 @@ impl FilesToOpen {
 }
 
 impl App for FilesToOpen {
-    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
         ctx.set_visuals(egui::style::Visuals::dark());
         self.ui_file_drag_drop(ctx);
+
+        let mut toasts = Toasts::new(ctx)
+            .anchor(
+                frame
+                    .info()
+                    .window_info
+                    .size
+                    .add(Vec2::new(-10.0, -10.0))
+                    .to_pos2(),
+            )
+            .direction(egui::Direction::BottomUp)
+            .align_to_end(true);
+
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // TODO Extract into function
             ui.add_space(10.0);
@@ -92,6 +107,21 @@ impl App for FilesToOpen {
                                 FileDialog::new().add_filter("pdf", &["pdf"]).save_file();
                         }
                         if self.save_path.is_some() {
+                            toasts.info(
+                                format!(
+                                    "Merging {} pdf documents. Creating {}",
+                                    self.files.len(),
+                                    &self
+                                        .save_path
+                                        .clone()
+                                        .unwrap()
+                                        .file_name()
+                                        .unwrap()
+                                        .to_str()
+                                        .unwrap()
+                                ),
+                                Duration::from_secs(10),
+                            );
                             merge_files::start(
                                 mem::take(&mut self.files),
                                 mem::take(&mut self.save_path).unwrap(),
@@ -102,6 +132,7 @@ impl App for FilesToOpen {
                         // }
                     }
                 });
+                toasts.show();
             });
             ui.add_space(5.0);
         });
