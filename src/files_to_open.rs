@@ -1,6 +1,7 @@
 use crate::merge_files;
 use eframe::{
     egui::{self, Button, CentralPanel, Context, Label, Layout, ScrollArea, TopBottomPanel, Ui},
+    emath::Align,
     App,
 };
 use rfd::FileDialog;
@@ -35,10 +36,10 @@ impl FilesToOpen {
         let mut remove_index: Vec<usize> = vec![];
         for (index, file) in self.files.iter().enumerate() {
             ui.horizontal(|ui| {
-                ui.with_layout(Layout::left_to_right(), |ui| {
+                ui.with_layout(Layout::left_to_right(Align::TOP), |ui| {
                     ui.add(Label::new(file.file_name().unwrap().to_str().unwrap()))
                 });
-                ui.with_layout(Layout::right_to_left(), |ui| {
+                ui.with_layout(Layout::right_to_left(Align::TOP), |ui| {
                     if ui.add(Button::new("Remove")).clicked() {
                         remove_index.push(index);
                     }
@@ -76,12 +77,12 @@ impl App for FilesToOpen {
             ui.heading("PDF Merger");
             ui.add_space(5.0);
             ui.horizontal(|ui| {
-                ui.with_layout(Layout::left_to_right(), |ui| {
+                ui.with_layout(Layout::left_to_right(Align::TOP), |ui| {
                     if ui.add(Button::new("Add Files")).clicked() {
                         self.open_file();
                     }
                 });
-                ui.with_layout(Layout::right_to_left(), |ui| {
+                ui.with_layout(Layout::right_to_left(Align::TOP), |ui| {
                     if ui.add(Button::new("Merge Files")).clicked() {
                         if self.files.is_empty() {
                             return;
