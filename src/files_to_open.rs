@@ -67,6 +67,7 @@ impl FilesToOpen {
 
 impl App for FilesToOpen {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+        ctx.set_visuals(egui::style::Visuals::dark());
         self.ui_file_drag_drop(ctx);
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // TODO Extract into function
