@@ -1,6 +1,6 @@
 use crate::merge_files;
 use eframe::{
-    egui::{Button, CentralPanel, Context, Label, Layout, ScrollArea, TopBottomPanel, Ui},
+    egui::{self, Button, CentralPanel, Context, Label, Layout, ScrollArea, TopBottomPanel, Ui},
     App,
 };
 use rfd::FileDialog;
@@ -31,6 +31,7 @@ impl FilesToOpen {
 
     pub fn render_files(&mut self, ui: &mut Ui) {
         // TODO this looks bad
+        // TODO Make reorderable paths
         let mut remove_index: Vec<usize> = vec![];
         for (index, file) in self.files.iter().enumerate() {
             ui.horizontal(|ui| {
@@ -82,6 +83,9 @@ impl App for FilesToOpen {
                 });
                 ui.with_layout(Layout::right_to_left(), |ui| {
                     if ui.add(Button::new("Merge Files")).clicked() {
+                        if self.files.is_empty() {
+                            return;
+                        }
                         if self.save_path.is_none() {
                             self.save_path =
                                 FileDialog::new().add_filter("pdf", &["pdf"]).save_file();
