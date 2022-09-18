@@ -5,7 +5,6 @@ use std::{
 };
 
 use lopdf::{Bookmark, Document, Object};
-// use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rayon::prelude::*;
 
 pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) -> JoinHandle<()> {

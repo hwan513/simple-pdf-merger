@@ -127,9 +127,6 @@ impl App for FilesToOpen {
                                 ),
                             ))
                         }
-                        // if let Some(save_path) = self.save_path.clone() {
-                        //     merge_files::start(mem::take(&mut self.files), save_path);
-                        // }
                     }
                 });
 
