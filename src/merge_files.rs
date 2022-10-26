@@ -20,6 +20,7 @@ pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) -> JoinHandle<()> {
             .collect();
         // Run merge_documents code
         merge_documents(open_documents, file_paths, save_path);
+        // save_individual(open_documents, PathBuf::from(""), file_paths);
     })
 }
 
@@ -28,12 +29,18 @@ fn remove_duplicate_pages(mut document: Document) -> Document {
     let mut prev_page_text = String::new();
     for (page_num, _page_id) in document.get_pages() {
         let curr_page_text = document.extract_text(&[page_num]).unwrap();
-        if prev_page_text == curr_page_text {
+        if strsim::normalized_levenshtein(&prev_page_text, &curr_page_text) >= 0.999 {
             rem_pages.push(page_num - 1);
         }
         prev_page_text = curr_page_text;
     }
     document.delete_pages(&rem_pages);
+
+    // Reorder all new Document objects
+    document.renumber_objects();
+    //Set any Bookmarks to the First child if they are not set to a page
+    document.adjust_zero_pages();
+
     document.prune_objects();
     document
 }
@@ -155,7 +162,18 @@ fn merge_documents(documents: Vec<Document>, doc_names: Vec<PathBuf>, save_path:
         }
     }
 
+    save_document(document, &save_path)
+}
+
+fn save_document(mut document: Document, save_path: &PathBuf) {
     document.prune_objects();
     document.compress();
-    document.save(&save_path).unwrap();
+    document.save(save_path).unwrap();
+}
+
+fn save_individual(documents: Vec<Document>, save_folder: PathBuf, file_paths: Vec<PathBuf>) {
+    for (document, file_path) in documents.into_iter().zip(file_paths) {
+        let file_path = save_folder.join(file_path.file_name().unwrap());
+        save_document(document, &file_path)
+    }
 }
