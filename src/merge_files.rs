@@ -29,7 +29,7 @@ fn remove_duplicate_pages(mut document: Document) -> Document {
     let mut prev_page_text = String::new();
     for (page_num, _page_id) in document.get_pages() {
         let curr_page_text = document.extract_text(&[page_num]).unwrap();
-        if strsim::normalized_levenshtein(&prev_page_text, &curr_page_text) >= 0.999 {
+        if strsim::normalized_levenshtein(&prev_page_text, &curr_page_text) >= 0.85 {
             rem_pages.push(page_num - 1);
         }
         prev_page_text = curr_page_text;
