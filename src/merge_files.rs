@@ -15,7 +15,7 @@ pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) -> JoinHandle<()> {
         let open_documents: Vec<Document> = file_paths
             .par_iter()
             .map(|file_path| {
-                remove_duplicate_pages(Document::load(file_path).expect("Invalid File Path"))
+                remove_duplicate_pages(Document::load(file_path).expect("Invalid File Path"), 0.85)
             })
             .collect();
         // Run merge_documents code
@@ -24,12 +24,12 @@ pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) -> JoinHandle<()> {
     })
 }
 
-fn remove_duplicate_pages(mut document: Document) -> Document {
+fn remove_duplicate_pages(mut document: Document, threshold: f64) -> Document {
     let mut rem_pages = vec![];
     let mut prev_page_text = String::new();
     for (page_num, _page_id) in document.get_pages() {
         let curr_page_text = document.extract_text(&[page_num]).unwrap();
-        if strsim::normalized_levenshtein(&prev_page_text, &curr_page_text) >= 0.85 {
+        if strsim::normalized_levenshtein(&prev_page_text, &curr_page_text) >= threshold {
             rem_pages.push(page_num - 1);
         }
         prev_page_text = curr_page_text;
