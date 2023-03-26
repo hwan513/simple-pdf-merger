@@ -57,10 +57,10 @@ impl FilesToOpen {
     }
 
     pub fn ui_file_drag_drop(&mut self, ctx: &Context) {
-        if ctx.input().raw.dropped_files.is_empty() {
+        if ctx.input(|i| i.raw.dropped_files.is_empty()) {
             return;
         }
-        let dropped_files = &ctx.input().raw.dropped_files.clone();
+        let dropped_files = &ctx.input(|i| i.raw.dropped_files.clone());
         for file in dropped_files {
             if let Some(path) = file.clone().path {
                 if path.extension().unwrap_or_default() == "pdf" {
@@ -76,7 +76,7 @@ impl App for FilesToOpen {
         ctx.set_visuals(egui::style::Visuals::dark());
         self.ui_file_drag_drop(ctx);
 
-        let mut toasts = Toasts::new(ctx)
+        let mut toasts = Toasts::new()
             .anchor(
                 frame
                     .info()
@@ -140,7 +140,7 @@ impl App for FilesToOpen {
                 }
                 self.running_merges
                     .retain(|operation| !operation.1.is_finished());
-                toasts.show();
+                toasts.show(ctx);
             });
             ui.add_space(5.0);
         });
