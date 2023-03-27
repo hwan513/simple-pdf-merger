@@ -27,7 +27,7 @@ impl FilesToOpen {
     pub fn open_file(&mut self) {
         if let Some(mut files) = FileDialog::new()
             .add_filter("pdf", &["pdf"])
-            .set_directory("/Users/henrywang/Documents/")
+            .set_directory(dirs::document_dir().unwrap())
             .pick_files()
         {
             self.files.append(&mut files);
@@ -105,8 +105,10 @@ impl App for FilesToOpen {
                             return;
                         }
                         if self.save_path.is_none() {
-                            self.save_path =
-                                FileDialog::new().add_filter("pdf", &["pdf"]).save_file();
+                            self.save_path = FileDialog::new()
+                                .add_filter("pdf", &["pdf"])
+                                .set_directory(dirs::download_dir().unwrap())
+                                .save_file();
                         }
                         if self.save_path.is_some() {
                             let file_name = self.save_path.clone().unwrap();
@@ -158,7 +160,10 @@ impl App for FilesToOpen {
             ui.add_space(5.0);
             ui.horizontal(|ui| {
                 if ui.add(Button::new("Configure Save Path")).clicked() {
-                    if let Some(save_dir) = FileDialog::new().set_directory("/").pick_folder() {
+                    if let Some(save_dir) = FileDialog::new()
+                        .set_directory(dirs::download_dir().unwrap())
+                        .pick_folder()
+                    {
                         self.save_path = Some(save_dir)
                     }
                 }
