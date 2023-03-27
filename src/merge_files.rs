@@ -17,7 +17,7 @@ pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) -> JoinHandle<()> {
         let open_documents: Vec<Document> = file_paths
             .par_iter()
             .map(|file_path| {
-                parse_documents(
+                process_documents(
                     Document::load(file_path).expect("Invalid Input File Path"),
                     0.85,
                 )
@@ -31,7 +31,7 @@ pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) -> JoinHandle<()> {
     })
 }
 
-fn parse_documents(mut document: Document, threshold: f64) -> Result<Document, Error> {
+fn process_documents(mut document: Document, threshold: f64) -> Result<Document, Error> {
     // get the size of the pages in each document
     let media_box = get_media_box(&document)?;
 
