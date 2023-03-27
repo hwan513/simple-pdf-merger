@@ -87,7 +87,7 @@ fn merge_documents(documents: Vec<Document>, doc_names: Vec<PathBuf>, save_path:
         let mut first = true;
         doc.renumber_objects_with(max_id);
         max_id = doc.max_id + 1;
-        page_vec.extend(doc.get_pages().into_iter().map(|(_, object_id)| {
+        page_vec.extend(doc.get_pages().into_values().map(|object_id| {
             if first {
                 let bookmark = Bookmark::new(
                     doc_name.file_name().unwrap().to_str().unwrap().to_string(),
