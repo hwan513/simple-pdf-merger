@@ -4,6 +4,7 @@ use std::{
     thread::{self, JoinHandle},
 };
 
+use anyhow::Error;
 use lopdf::{Bookmark, Document, Object};
 use rayon::prelude::*;
 
@@ -15,7 +16,7 @@ pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) -> JoinHandle<()> {
         let open_documents: Vec<Document> = file_paths
             .par_iter()
             .map(|file_path| {
-                remove_duplicate_pages(Document::load(file_path).expect("Invalid File Path"), 0.85)
+                parse_documents(Document::load(file_path).expect("Invalid File Path"), 0.85)
             })
             .collect();
         // Run merge_documents code
@@ -24,10 +25,16 @@ pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) -> JoinHandle<()> {
     })
 }
 
-fn remove_duplicate_pages(mut document: Document, threshold: f64) -> Document {
+fn parse_documents(mut document: Document, threshold: f64) -> Document {
+    // get the size of the pages in each document
+    let media_box = get_media_box(&document).unwrap();
+
     let mut rem_pages = vec![];
     let mut prev_page_text = String::new();
-    for (page_num, _page_id) in document.get_pages() {
+
+    for (page_num, page_id) in document.get_pages() {
+        fix_size(&mut document, page_id, &media_box);
+
         let curr_page_text = document.extract_text(&[page_num]).unwrap();
         if strsim::normalized_levenshtein(&prev_page_text, &curr_page_text) >= threshold {
             rem_pages.push(page_num - 1);
@@ -43,6 +50,32 @@ fn remove_duplicate_pages(mut document: Document, threshold: f64) -> Document {
 
     document.prune_objects();
     document
+}
+
+fn get_media_box(document: &Document) -> Result<Object, Error> {
+    for (_object_id, object) in document.objects.iter() {
+        if let "Pages" = object.type_name().unwrap_or("") {
+            let object_dict = object.as_dict()?;
+            if object_dict.has("MediaBox".as_bytes()) {
+                return Ok(object_dict.get("MediaBox".as_bytes())?.clone());
+            }
+        }
+    }
+    // return a default size media_box
+    Ok(vec![0.into(), 0.into(), 1024.into(), 768.into()].into())
+}
+
+fn fix_size(document: &mut Document, page_id: (u32, u16), media_box: &Object) {
+    // get the dictionary of the current page
+    let page_dict = &mut document
+        .get_object_mut(page_id)
+        .unwrap()
+        .as_dict_mut()
+        .unwrap();
+    // set the media box of the page if it isn't currently set
+    if !page_dict.has("MediaBox".as_bytes()) {
+        page_dict.set("MediaBox", media_box.clone());
+    }
 }
 
 fn merge_documents(documents: Vec<Document>, doc_names: Vec<PathBuf>, save_path: PathBuf) {
