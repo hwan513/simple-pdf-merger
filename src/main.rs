@@ -10,5 +10,6 @@ fn main() {
         "PDF Merger UI",
         native_options,
         Box::new(|_cc| Box::new(FilesToOpen::new())),
-    );
+    )
+    .unwrap();
 }
