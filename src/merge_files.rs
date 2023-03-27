@@ -9,6 +9,7 @@ use lopdf::{Bookmark, Document, Object};
 use rayon::prelude::*;
 
 pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) -> JoinHandle<()> {
+    // TODO: have error messages show up in the UI
     // Create new thead to merge pdf
     thread::spawn(move || {
         // Open all specified documents using rayon thread pools
@@ -16,26 +17,31 @@ pub fn start(file_paths: Vec<PathBuf>, save_path: PathBuf) -> JoinHandle<()> {
         let open_documents: Vec<Document> = file_paths
             .par_iter()
             .map(|file_path| {
-                parse_documents(Document::load(file_path).expect("Invalid File Path"), 0.85)
+                parse_documents(
+                    Document::load(file_path).expect("Invalid Input File Path"),
+                    0.85,
+                )
+                .expect("Error Occured While Processing Documents")
             })
             .collect();
         // Run merge_documents code
-        merge_documents(open_documents, file_paths, save_path);
+        merge_documents(open_documents, file_paths, save_path)
+            .expect("Error Occured While Merging Documents");
         // save_individual(open_documents, PathBuf::from(""), file_paths);
     })
 }
 
-fn parse_documents(mut document: Document, threshold: f64) -> Document {
+fn parse_documents(mut document: Document, threshold: f64) -> Result<Document, Error> {
     // get the size of the pages in each document
-    let media_box = get_media_box(&document).unwrap();
+    let media_box = get_media_box(&document)?;
 
     let mut rem_pages = vec![];
     let mut prev_page_text = String::new();
 
     for (page_num, page_id) in document.get_pages() {
-        fix_size(&mut document, page_id, &media_box);
+        fix_size(&mut document, page_id, &media_box)?;
 
-        let curr_page_text = document.extract_text(&[page_num]).unwrap();
+        let curr_page_text = document.extract_text(&[page_num])?;
         if strsim::normalized_levenshtein(&prev_page_text, &curr_page_text) >= threshold {
             rem_pages.push(page_num - 1);
         }
@@ -49,7 +55,7 @@ fn parse_documents(mut document: Document, threshold: f64) -> Document {
     document.adjust_zero_pages();
 
     document.prune_objects();
-    document
+    Ok(document)
 }
 
 fn get_media_box(document: &Document) -> Result<Object, Error> {
@@ -65,20 +71,21 @@ fn get_media_box(document: &Document) -> Result<Object, Error> {
     Ok(vec![0.into(), 0.into(), 1024.into(), 768.into()].into())
 }
 
-fn fix_size(document: &mut Document, page_id: (u32, u16), media_box: &Object) {
+fn fix_size(document: &mut Document, page_id: (u32, u16), media_box: &Object) -> Result<(), Error> {
     // get the dictionary of the current page
-    let page_dict = &mut document
-        .get_object_mut(page_id)
-        .unwrap()
-        .as_dict_mut()
-        .unwrap();
+    let page_dict = &mut document.get_object_mut(page_id)?.as_dict_mut()?;
     // set the media box of the page if it isn't currently set
     if !page_dict.has("MediaBox".as_bytes()) {
         page_dict.set("MediaBox", media_box.clone());
     }
+    Ok(())
 }
 
-fn merge_documents(documents: Vec<Document>, doc_names: Vec<PathBuf>, save_path: PathBuf) {
+fn merge_documents(
+    documents: Vec<Document>,
+    doc_names: Vec<PathBuf>,
+    save_path: PathBuf,
+) -> Result<(), Error> {
     let mut page_vec = vec![];
     let mut documents_objects = BTreeMap::new();
     let mut document = Document::with_version("1.7");
@@ -112,13 +119,13 @@ fn merge_documents(documents: Vec<Document>, doc_names: Vec<PathBuf>, save_path:
             "Catalog" => {
                 if catalog_id.is_none() {
                     catalog_id = Some(object_id);
-                    catalog_dict = Some(object.as_dict().unwrap().clone());
+                    catalog_dict = Some(object.as_dict()?.clone());
                 }
             }
             "Pages" => {
                 if pages_id.is_none() {
                     pages_id = Some(object_id);
-                    pages_dict = Some(object.as_dict().unwrap().clone());
+                    pages_dict = Some(object.as_dict()?.clone());
                 } else if let Ok(dictionary) = object.as_dict() {
                     let mut dictionary = dictionary.clone();
                     if let Some(old_dictionary) = pages_dict {
@@ -137,12 +144,7 @@ fn merge_documents(documents: Vec<Document>, doc_names: Vec<PathBuf>, save_path:
 
     // Modify page objects
     for page_id in &page_vec {
-        let mut page_dict = document
-            .get_object(*page_id)
-            .unwrap()
-            .as_dict()
-            .unwrap()
-            .clone();
+        let mut page_dict = document.get_object(*page_id)?.as_dict()?.clone();
         page_dict.set("Parent", pages_id.unwrap());
         document
             .objects
@@ -190,18 +192,21 @@ fn merge_documents(documents: Vec<Document>, doc_names: Vec<PathBuf>, save_path:
     // Set all bookmarks to the PDF Object tree then set the Outlines to the Bookmark content map.
     // Create bookmarks based on file names
     if let Some(n) = document.build_outline() {
-        if let Object::Dictionary(ref mut dict) = document.get_object_mut(catalog_id).unwrap() {
+        if let Object::Dictionary(ref mut dict) = document.get_object_mut(catalog_id)? {
             dict.set("Outlines", Object::Reference(n));
         }
     }
 
-    save_document(document, &save_path)
+    save_document(document, &save_path);
+    Ok(())
 }
 
 fn save_document(mut document: Document, save_path: &PathBuf) {
     document.prune_objects();
     document.compress();
-    document.save(save_path).unwrap();
+    document
+        .save(save_path)
+        .expect("An Error Occured While Saving the Merged Document");
 }
 
 fn save_individual(documents: Vec<Document>, save_folder: PathBuf, file_paths: Vec<PathBuf>) {
